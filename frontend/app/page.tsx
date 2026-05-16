@@ -6,7 +6,7 @@ import { ChatInterface } from "@/components/chat-interface"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { DragDropOverlay } from "@/components/drag-drop-overlay"
 import { FloatingActionButton } from "@/components/floating-action-button"
-import { StatusIndicator } from "@/components/status-indicator"
+
 import { useDragDrop } from "@/hooks/use-drag-drop"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -24,7 +24,6 @@ export default function Home() {
       document.documentElement.classList.remove('dark');
     }
   }, []);
-  const [connectionStatus, setConnectionStatus] = useState<"online" | "offline">("online")
   const [showWelcome, setShowWelcome] = useState(true)
 
   const toggleTheme = () => {
@@ -38,14 +37,6 @@ export default function Home() {
       localStorage.setItem('theme', 'light');
     }
   }
-
-  // Simulate connection status
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setConnectionStatus(Math.random() > 0.1 ? "online" : "offline")
-    }, 10000)
-    return () => clearInterval(interval)
-  }, [])
 
   // Hide welcome message after 5 seconds
   useEffect(() => {
@@ -105,13 +96,6 @@ export default function Home() {
       >
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <motion.div className="flex items-center space-x-3" whileHover={{ scale: 1.02 }}>
-            <motion.div
-              className="w-8 h-8 bg-gradient-to-br from-primary to-chart-1 rounded-lg flex items-center justify-center"
-              whileHover={{ rotate: 5 }}
-              transition={{ type: "spring", stiffness: 300 }}
-            >
-              <span className="text-primary-foreground font-bold text-sm">R</span>
-            </motion.div>
             <div>
               <h1 className="text-xl font-semibold text-foreground">RAG Assistant</h1>
               <p className="text-sm text-muted-foreground">Multimodal Knowledge Interface</p>
@@ -119,7 +103,6 @@ export default function Home() {
           </motion.div>
 
           <div className="flex items-center gap-3">
-            <StatusIndicator status={connectionStatus} />
             <ThemeToggle isDark={isDarkMode} onToggle={toggleTheme} />
           </div>
         </div>
