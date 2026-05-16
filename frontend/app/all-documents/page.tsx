@@ -3,13 +3,14 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { motion, AnimatePresence } from "framer-motion"
+import { API_ENDPOINTS } from "@/lib/api-config"
 
 export default function AllDocumentsPage() {
   const [documents, setDocuments] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   useEffect(() => {
     setLoading(true)
-    fetch("http://127.0.0.1:8000/documents/")
+    fetch(API_ENDPOINTS.DOCUMENTS_LIST)
       .then((res) => res.json())
       .then((data) => setDocuments(data.documents || []))
       .finally(() => setLoading(false))

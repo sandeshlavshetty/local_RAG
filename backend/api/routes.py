@@ -246,7 +246,7 @@ async def get_uploaded_file(filename: str):
     uploads_dir = os.path.join(BASE_DIR, "data", "uploads")
     safe_name = os.path.basename(filename)
     file_path = os.path.join(uploads_dir, safe_name)
-
+    print(uploads_dir)
     real_uploads = os.path.realpath(uploads_dir)
     real_file = os.path.realpath(file_path)
 
@@ -415,7 +415,7 @@ async def get_document_file(filename: str):
     uploads_dir = os.path.join(BASE_DIR, "data", "uploads")
     safe_name = os.path.basename(filename)
     file_path = os.path.join(uploads_dir, safe_name)
-
+    
     real_uploads = os.path.realpath(uploads_dir)
     real_file = os.path.realpath(file_path)
 

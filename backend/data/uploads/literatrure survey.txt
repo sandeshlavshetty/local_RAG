@@ -1,0 +1,90 @@
+literatrure survey
+1. how early cnn-rnnuse to generate captions ?
+2. how attention mech and transformers forms captions ?
+3. how is attention mech works ?
+
+
+this things cant be done by simply sending it to Chatgpt and know the results ?
+why should we use ur model to learn this things
+
+what are these metrics ?
+what does they implies ?
+
+"cleaning, normalization, and tokenization to prepare the text for training."
+what normalization u did ?
+tokenization mean ? what u did there ?
+
+can u explain BLIP ? in short 
+why only blip ?
+
+what is n-gram ?
+
+what is the webbaesd eval diagram implies ?
+
+
+how maximum caption length is used during training
+
+
+what is vqa,visDial,NLVR2 ?
+
+why corss entropy only ?
+
+hwo these metrics works simpler algo to explain each
+
+what is consensus ?
+
+what is semantic similarity ?
+
+when bleu is measarued btwn 0-1 and cider is measured in greater than 1 numbers why bar diagaram is formed it is not right way to show right ?
+
+
+
+Apache Parquet is a columnar storage file format commonly used in machine learning and big data workflows. Instead of storing data like normal image folders (image1.png, image2.png), Parquet stores dataset information in a highly optimized binary format.
+
+For your case, the PNG images and their labels/captions are packaged into structured dataset files that frameworks like Hugging Face can load efficiently during training.
+
+Why convert PNG images to Parquet?
+1. Faster Data Loading
+
+When training deep learning models, reading thousands of separate PNG files from disk is slow because:
+
+each image requires a separate file access
+storage systems repeatedly open/close files
+
+Parquet reduces this overhead by storing many samples together efficiently.
+
+2. Better Training Performance
+
+Training pipelines can:
+
+stream batches faster
+reduce I/O bottlenecks
+improve GPU utilization
+
+This helps especially for large datasets.
+
+3. Efficient Compression
+
+Parquet compresses data efficiently, so:
+
+dataset size becomes smaller
+uploading/downloading becomes faster
+cloud storage cost reduces
+4. Easy Integration with ML Libraries
+
+Libraries like:
+
+Hugging Face Datasets
+Apache Parquet
+
+can directly read Parquet files without manually handling image folders.
+
+5. Better for Cloud & Distributed Training
+
+Parquet works well when:
+
+training on GPUs
+using cloud platforms
+streaming datasets
+handling millions of samples
+Simple Analogy

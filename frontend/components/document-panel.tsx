@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { API_ENDPOINTS } from "@/lib/api-config"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileText, ImageIcon, Mic, Upload, X, CheckCircle, AlertCircle, Clock, FolderOpen, Trash2 } from "lucide-react"
@@ -52,7 +53,7 @@ export function DocumentPanel() {
     setLoadingDocs(true)
     setError(null)
     try {
-      const response = await fetch("http://127.0.0.1:8000/documents/")
+      const response = await fetch(API_ENDPOINTS.DOCUMENTS_LIST)
       const data = await response.json()
       setDocuments(data.documents || [])
     } catch (err) {
@@ -102,7 +103,7 @@ export function DocumentPanel() {
       const formData = new FormData()
       formData.append("file", file)
       try {
-        const response = await fetch("http://127.0.0.1:8000/upload/", {
+        const response = await fetch(API_ENDPOINTS.UPLOAD_FILE, {
           method: "POST",
           body: formData,
         })

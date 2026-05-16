@@ -1,10 +1,10 @@
-
 "use client"
 
 import React, { useEffect, useRef, useState } from "react"
 import { MultimodalInput } from "@/components/multimodal-input"
 import { DragDropOverlay } from "@/components/drag-drop-overlay"
 import { useDragDrop } from "@/hooks/use-drag-drop"
+import { API_ENDPOINTS } from "@/lib/api-config"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -121,7 +121,7 @@ export function ChatInterface() {
   const fileName = label.split(' ')[0];
   console.log('Citation clicked:', fileName);
   // Open the backend URL directly, which streams the file
-  window.open(`http://127.0.0.1:8000/documents/${fileName}`, "_blank", "noopener,noreferrer");
+  window.open(API_ENDPOINTS.DOCUMENT_VIEW(fileName), "_blank", "noopener,noreferrer");
 }
 
   const removePendingAttachment = (index: number) => {
@@ -161,7 +161,7 @@ export function ChatInterface() {
         console.log(`[DEBUG FRONTEND] Appending file to form: ${attachment.name}`)
       }
       
-      const response = await fetch("http://127.0.0.1:8000/ask/", {
+      const response = await fetch(API_ENDPOINTS.ASK_QUESTION, {
         method: "POST",
         // Don't set Content-Type header - browser will set it automatically with boundary
         body: formData,
@@ -271,7 +271,7 @@ export function ChatInterface() {
         try {
           const formData = new URLSearchParams()
           formData.append("query", previousMessage.content)
-          const response = await fetch("http://127.0.0.1:8000/ask/", {
+          const response = await fetch(API_ENDPOINTS.ASK_QUESTION, {
             method: "POST",
             headers: {
               "Content-Type": "application/x-www-form-urlencoded",
