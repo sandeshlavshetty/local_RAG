@@ -47,7 +47,8 @@ def get_embedding_model() -> Any:
             ) from e
         try:
             print("[DEBUG MODELS] Loading SentenceTransformer from local_models/all-MiniLM-L6-v2...")
-            _embedding_model = SentenceTransformer("local_models/all-MiniLM-L6-v2")
+            # _embedding_model = SentenceTransformer("local_models/all-MiniLM-L6-v2")
+            _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
             print("[DEBUG MODELS] Embedding model loaded successfully")
         except Exception as e:
             print(f"[ERROR MODELS] Failed to load embedding model: {str(e)}")

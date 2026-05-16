@@ -11,7 +11,8 @@ print(f"[DEBUG EMBED_STORE] VECTOR_DIR: {VECTOR_DIR}")
 os.makedirs(VECTOR_DIR, exist_ok=True)
 
 print("[DEBUG EMBED_STORE] Loading embedding model...")
-EMBEDDING_MODEL = SentenceTransformer("local_models/all-MiniLM-L6-v2")
+# EMBEDDING_MODEL = SentenceTransformer("local_models/all-MiniLM-L6-v2")
+EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
 print("[DEBUG EMBED_STORE] Embedding model loaded")
 
 METADATA_FILE = os.path.join(VECTOR_DIR, "metadata.json")
