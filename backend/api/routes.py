@@ -108,7 +108,7 @@ async def upload_file(file: UploadFile = File(...)):
 async def ask_question(
     query: str = Form(...), 
     file: UploadFile | None = File(None),
-    retrieval_method: str = Form("hybrid", description="Retrieval method: semantic, bm25, keyword, tfidf, hybrid")
+    retrieval_method: str = Form("semantic", description="Retrieval method: semantic, bm25, keyword, tfidf, hybrid")
 ):
     """
     Ask a question. If a PDF/Image/Audio file is attached, first extract its
