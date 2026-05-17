@@ -443,43 +443,8 @@ def _legacy_retrieve_answer(query, top_k=3, retrieval_method="hybrid"):
 
 
 def retrieve_answer(query, top_k=3, retrieval_method="hybrid"):
-    """
-    LangGraph-based retrieval agent.
-
-    This keeps the existing local FAISS/BM25/keyword/TF-IDF retrievers and Ollama model,
-    while adding a graph workflow (decision -> retrieve -> grade -> rewrite -> answer).
-    """
-    global _langgraph_agent
-
-    # If no documents are indexed, short-circuit with a helpful message.
-    try:
-        index_count = getattr(index, "ntotal", 0)
-        if index_count == 0 or not metadata_store:
-            return {
-                "answer": (
-                    "No documents are indexed yet. Please upload a PDF/Image/Audio via /upload "
-                    "before asking questions."
-                ),
-                "citations": [],
-                "query_used": "",
-            }
-    except Exception as e:
-        print(f"[ERROR RETRIEVER] Exception checking index: {str(e)}")
-        return {
-            "answer": "Vector index unavailable. Please upload a PDF/Image/Audio via /upload to initialize the index.",
-            "citations": [],
-            "query_used": "",
-        }
-
-    try:
-        if _langgraph_agent is None:
-            from modules.langgraph_retriever_agent import LangGraphRetrieverAgent
-
-            _langgraph_agent = LangGraphRetrieverAgent(retrieve_chunks)
-        return _langgraph_agent.invoke(query, top_k=top_k, retrieval_method=retrieval_method)
-    except Exception as e:
-        print(f"[WARNING RETRIEVER] LangGraph agent failed, using legacy pipeline: {str(e)}")
-        return _legacy_retrieve_answer(query, top_k=top_k, retrieval_method=retrieval_method)
+    """Legacy retrieval entrypoint used by the non-threaded /ask route."""
+    return _legacy_retrieve_answer(query, top_k=top_k, retrieval_method=retrieval_method)
 
 # Example usage
 if __name__ == "__main__":

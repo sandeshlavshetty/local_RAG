@@ -15,6 +15,8 @@ from modules.utils import chunk_text_with_overlap
 from config import BASE_DIR, VECTOR_DIR, PROCESSED_DIR
 from modules.models import get_embedding_dimension
 
+_thread_agent = None
+
 try:
     import faiss  # type: ignore
 except Exception:
@@ -235,6 +237,35 @@ async def ask_question(
         import traceback
         traceback.print_exc()
         raise
+
+
+@router.post("/ask/thread")
+async def ask_thread(
+    query: str = Form(...),
+    thread_id: str = Form(...),
+    retrieval_method: str = Form("hybrid", description="Retrieval method: semantic, bm25, keyword, tfidf, hybrid")
+):
+    """Ask a question through the threaded LangGraph RAG pipeline.
+
+    This endpoint keeps short-term conversation memory via thread_id and
+    performs retrieval on every turn using the existing local retriever.
+    """
+    try:
+        from modules.langgraph_retriever_agent import LangGraphRetrieverAgent
+        from modules.retriever import retrieve_chunks
+
+        global _thread_agent
+        if _thread_agent is None:
+            _thread_agent = LangGraphRetrieverAgent(retrieve_chunks)
+
+        agent = _thread_agent
+        result = agent.invoke_thread(query, thread_id=thread_id, retrieval_method=retrieval_method)
+        return result
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return {"error": str(e)}
 
 
 @router.get("/uploads/{filename}")

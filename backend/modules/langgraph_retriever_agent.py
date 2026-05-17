@@ -6,6 +6,7 @@ import re
 from typing import Any, Callable, Dict, List, Literal, Tuple, TypedDict
 
 import ollama
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 
@@ -16,6 +17,8 @@ RetrieverFn = Callable[[str, int, str], List[ChunkResult]]
 class RAGAgentState(TypedDict, total=False):
 	original_query: str
 	query: str
+	thread_id: str
+	thread_notes: str
 	retrieval_method: str
 	top_k: int
 	retrieval_hint: str
@@ -29,6 +32,7 @@ class RAGAgentState(TypedDict, total=False):
 	answer: str
 	query_used: str
 	error: str
+	turn_summary: str
 
 
 def _safe_json_parse(raw: str) -> Dict[str, Any]:
@@ -63,7 +67,38 @@ class LangGraphRetrieverAgent:
 	def __init__(self, retriever_fn: RetrieverFn):
 		self._retriever_fn = retriever_fn
 		self._model = os.getenv("OLLAMA_VL_MODEL", "qwen3:8b")
+		self._checkpointer = self._build_checkpointer()
 		self._graph = self._build_graph()
+
+	def _build_checkpointer(self):
+		mode = os.getenv("LANGGRAPH_CHECKPOINTER", "memory").strip().lower()
+		if mode == "postgres":
+			db_uri = os.getenv("LANGGRAPH_POSTGRES_URI", "").strip()
+			if db_uri:
+				try:
+					from langgraph.checkpoint.postgres import PostgresSaver
+
+					checkpointer = PostgresSaver.from_conn_string(db_uri)
+					if hasattr(checkpointer, "setup"):
+						checkpointer.setup()
+					return checkpointer
+				except Exception as exc:
+					print(f"[WARNING RETRIEVER] Postgres checkpointer unavailable: {exc}")
+
+		if mode == "redis":
+			db_uri = os.getenv("LANGGRAPH_REDIS_URI", "").strip()
+			if db_uri:
+				try:
+					from langgraph.checkpoint.redis import RedisSaver
+
+					checkpointer = RedisSaver.from_conn_string(db_uri)
+					if hasattr(checkpointer, "setup"):
+						checkpointer.setup()
+					return checkpointer
+				except Exception as exc:
+					print(f"[WARNING RETRIEVER] Redis checkpointer unavailable: {exc}")
+
+		return InMemorySaver()
 
 	def _build_graph(self):
 		graph = StateGraph(RAGAgentState)
@@ -73,6 +108,7 @@ class LangGraphRetrieverAgent:
 		graph.add_node("grade_documents", self._grade_documents)
 		graph.add_node("rewrite_question", self._rewrite_question)
 		graph.add_node("generate_answer", self._generate_answer)
+		graph.add_node("update_thread_memory", self._update_thread_memory)
 
 		graph.add_edge(START, "decide_retrieve_or_respond")
 		graph.add_conditional_edges(
@@ -93,11 +129,13 @@ class LangGraphRetrieverAgent:
 			},
 		)
 		graph.add_edge("rewrite_question", "decide_retrieve_or_respond")
-		graph.add_edge("generate_answer", END)
-		return graph.compile()
+		graph.add_edge("generate_answer", "update_thread_memory")
+		graph.add_edge("update_thread_memory", END)
+		return graph.compile(checkpointer=self._checkpointer)
 
 	def _decide_retrieve_or_respond(self, state: RAGAgentState) -> RAGAgentState:
 		query = state["query"]
+		thread_notes = state.get("thread_notes", "")
 		system_prompt = (
 			"You are a retrieval planner for a local RAG system. "
 			"Decide whether retrieval is needed before answering. "
@@ -106,6 +144,7 @@ class LangGraphRetrieverAgent:
 		user_prompt = (
 			"User question:\n"
 			f"{query}\n\n"
+			f"Conversation memory:\n{thread_notes if thread_notes else '(none)'}\n\n"
 			"Rules:\n"
 			"- action must be one of: retrieve or direct\n"
 			"- retrieval_hint should be a concise retrieval query\n"
@@ -230,6 +269,7 @@ class LangGraphRetrieverAgent:
 	def _generate_answer(self, state: RAGAgentState) -> RAGAgentState:
 		question = state.get("original_query", state["query"])
 		context = state.get("context_text", "")
+		thread_notes = state.get("thread_notes", "")
 
 		if not context.strip():
 			return {
@@ -245,12 +285,29 @@ class LangGraphRetrieverAgent:
 		)
 		user_prompt = (
 			f"Question: {question}\n\n"
+			f"Conversation memory:\n{thread_notes if thread_notes else '(none)'}\n\n"
 			f"Context:\n{context}\n\n"
 			"Provide a concise answer."
 		)
 
 		answer = _chat(self._model, system_prompt, user_prompt).strip()
 		return {"answer": answer}
+
+	def _update_thread_memory(self, state: RAGAgentState) -> RAGAgentState:
+		question = state.get("original_query", state.get("query", ""))
+		answer = state.get("answer", "")
+		previous_notes = state.get("thread_notes", "")
+
+		turn_summary = f"Q: {question}\nA: {answer}".strip()
+		if previous_notes.strip():
+			thread_notes = f"{previous_notes}\n\n{turn_summary}"
+		else:
+			thread_notes = turn_summary
+
+		return {
+			"thread_notes": thread_notes,
+			"turn_summary": turn_summary,
+		}
 
 	def invoke(self, query: str, top_k: int = 3, retrieval_method: str = "hybrid") -> Dict[str, Any]:
 		initial_state: RAGAgentState = {
@@ -268,5 +325,34 @@ class LangGraphRetrieverAgent:
 			"answer": final_state.get("answer", "No answer generated."),
 			"citations": final_state.get("citations", []),
 			"query_used": final_state.get("query_used", final_state.get("retrieval_hint", "")),
+		}
+
+	def invoke_thread(
+		self,
+		query: str,
+		thread_id: str,
+		top_k: int = 3,
+		retrieval_method: str = "hybrid",
+	) -> Dict[str, Any]:
+		initial_state: RAGAgentState = {
+			"original_query": query,
+			"query": query,
+			"thread_id": str(thread_id),
+			"retrieval_method": retrieval_method,
+			"top_k": top_k,
+			"rewrite_count": 0,
+			"max_rewrites": 1,
+			"citations": [],
+			"context_text": "",
+			"thread_notes": "",
+		}
+		config = {"configurable": {"thread_id": str(thread_id)}}
+		final_state = self._graph.invoke(initial_state, config)
+		return {
+			"answer": final_state.get("answer", "No answer generated."),
+			"citations": final_state.get("citations", []),
+			"query_used": final_state.get("query_used", final_state.get("retrieval_hint", "")),
+			"thread_id": str(thread_id),
+			"thread_notes": final_state.get("thread_notes", ""),
 		}
 
