@@ -13,6 +13,7 @@ export const API_ENDPOINTS = {
 
   // Chat & Queries
   ASK_QUESTION: `${API_BASE_URL}/ask/`,
+  ASK_THREAD: `${API_BASE_URL}/ask/thread`,
 
   // Health Check
   HEALTH: `${API_BASE_URL}/health`,

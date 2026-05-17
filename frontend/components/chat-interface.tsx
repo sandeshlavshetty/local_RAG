@@ -62,6 +62,8 @@ export function ChatInterface() {
   const [isTyping, setIsTyping] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [showMultimodalInput, setShowMultimodalInput] = useState(false)
+  const [questionMode, setQuestionMode] = useState<"ask" | "thread">("ask")
+  const [threadId, setThreadId] = useState("")
 
   // pending attachments that will be sent with next text message (or can be sent alone)
   const [pendingAttachments, setPendingAttachments] = useState<
@@ -131,6 +133,7 @@ export function ChatInterface() {
   const sendMessage = async () => {
     // if there's no text and no attachments, do nothing
     if (!inputValue.trim() && pendingAttachments.length === 0) return
+    if (questionMode === "thread" && !threadId.trim()) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -146,68 +149,24 @@ export function ChatInterface() {
     setPendingAttachments([])
     setIsTyping(true)
 
-    // call backend with text and file (multipart/form-data)
     try {
       const formData = new FormData()
       formData.append("query", userMessage.content)
-      
-      // Add file if there's a pending attachment
-      if (pendingAttachments.length > 0) {
-        const attachment = pendingAttachments[0] // Get first attachment
-        // Convert blob URL back to file - we need to fetch it
+
+      let endpoint = API_ENDPOINTS.ASK_QUESTION
+      if (questionMode === "thread") {
+        formData.append("thread_id", threadId.trim())
+        endpoint = API_ENDPOINTS.ASK_THREAD
+      } else if (pendingAttachments.length > 0) {
+        const attachment = pendingAttachments[0]
         const response = await fetch(attachment.url)
         const blob = await response.blob()
         formData.append("file", blob, attachment.name)
         console.log(`[DEBUG FRONTEND] Appending file to form: ${attachment.name}`)
       }
-      
-      const response = await fetch(API_ENDPOINTS.ASK_QUESTION, {
-        method: "POST",
-        // Don't set Content-Type header - browser will set it automatically with boundary
-        body: formData,
-      })
-      const result = await response.json()
 
-      let answerText = "No answer returned."
-      let sources: Citation[] = []
-
-      // robust parsing of possible result formats
-      if (result.answer) {
-        if (typeof result.answer === "string") {
-          answerText = result.answer
-          // If top-level citations exist, use them
-          if (Array.isArray(result.citations)) {
-            sources = result.citations.map((c: any) => ({
-              label: c.source_file
-                ? `${c.source_file}${c.page_num ? ` (p.${c.page_num})` : ""}`
-                : c.text || c.title || JSON.stringify(c),
-            }))
-          }
-        } else if (typeof result.answer === "object") {
-          answerText =
-            result.answer.answer ||
-            result.answer.text ||
-            JSON.stringify(result.answer)
-          if (Array.isArray(result.answer.citations)) {
-            sources = result.answer.citations.map((c: any) => {
-              // Use source_file and page_num for label
-              const label = c.source_file
-                ? `${c.source_file}${c.page_num ? ` (p.${c.page_num})` : ""}`
-                : c.text || c.title || JSON.stringify(c)
-              return { label }
-            })
-          }
-        }
-      } else if (result.citations && Array.isArray(result.citations)) {
-        // fallback if top-level citations exist
-        sources = result.citations.map((c: any) => ({
-          label: c.source_file
-            ? `${c.source_file}${c.page_num ? ` (p.${c.page_num})` : ""}`
-            : c.text || c.title || JSON.stringify(c),
-        }))
-      } else if (result.error) {
-        answerText = result.error
-      }
+      const result = await submitQuestion(formData, endpoint)
+      const { answerText, sources } = parseRagResponse(result)
 
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -262,41 +221,79 @@ export function ChatInterface() {
     else navigator.clipboard.writeText(c.label)
   }
 
+  const parseRagResponse = (result: any) => {
+    let answerText = "No answer returned."
+    let sources: Citation[] = []
+
+    if (result.answer) {
+      if (typeof result.answer === "string") {
+        answerText = result.answer
+        if (Array.isArray(result.citations)) {
+          sources = result.citations.map((c: any) => ({
+            label: c.source_file
+              ? `${c.source_file}${c.page_num ? ` (p.${c.page_num})` : ""}`
+              : c.text || c.title || JSON.stringify(c),
+          }))
+        }
+      } else if (typeof result.answer === "object") {
+        answerText =
+          result.answer.answer ||
+          result.answer.text ||
+          JSON.stringify(result.answer)
+        if (Array.isArray(result.answer.citations)) {
+          sources = result.answer.citations.map((c: any) => {
+            const label = c.source_file
+              ? `${c.source_file}${c.page_num ? ` (p.${c.page_num})` : ""}`
+              : c.text || c.title || JSON.stringify(c)
+            return { label }
+          })
+        }
+      }
+    } else if (result.citations && Array.isArray(result.citations)) {
+      sources = result.citations.map((c: any) => ({
+        label: c.source_file
+          ? `${c.source_file}${c.page_num ? ` (p.${c.page_num})` : ""}`
+          : c.text || c.title || JSON.stringify(c),
+      }))
+    } else if (result.error) {
+      answerText = result.error
+    }
+
+    return { answerText, sources }
+  }
+
+  const submitQuestion = async (formData: FormData, endpoint: string) => {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      body: formData,
+    })
+    return response.json()
+  }
+
   const regenerateResponse = async (messageId: string) => {
     const messageIndex = messages.findIndex((m) => m.id === messageId)
     if (messageIndex > 0) {
       const previousMessage = messages[messageIndex - 1]
       if (previousMessage.type === "user") {
+        if (questionMode === "thread" && !threadId.trim()) return
         setIsTyping(true)
         try {
-          const formData = new URLSearchParams()
+          const formData = new FormData()
           formData.append("query", previousMessage.content)
-          const response = await fetch(API_ENDPOINTS.ASK_QUESTION, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: formData,
-          })
-          const result = await response.json()
-          let answerText = result.answer || result.error || "No answer returned."
-          // parse sources like in sendMessage (optional)
-          let sources: Citation[] = []
-          if (result.answer && typeof result.answer === "object" && Array.isArray(result.answer.citations)) {
-            sources = result.answer.citations.map((c: any) => {
-              if (typeof c === "string") {
-                return { label: c, url: c.startsWith("http") ? c : undefined }
-              }
-              const url = c.url || c.source || c.source_file || c.link
-              const label = c.title || c.source || c.source_file || url || JSON.stringify(c)
-              return { label, url }
-            })
+
+          let endpoint = API_ENDPOINTS.ASK_QUESTION
+          if (questionMode === "thread") {
+            formData.append("thread_id", threadId.trim())
+            endpoint = API_ENDPOINTS.ASK_THREAD
           }
+
+          const result = await submitQuestion(formData, endpoint)
+          const { answerText, sources } = parseRagResponse(result)
 
           const newResponse: Message = {
             id: Date.now().toString(),
             type: "ai",
-            content: typeof answerText === "string" ? answerText : JSON.stringify(answerText),
+            content: answerText,
             timestamp: new Date(),
             sources,
             queryUsed: result.query_used || "",  // Include the query used for retrieval
@@ -411,6 +408,32 @@ export function ChatInterface() {
           >
             Clear Chat
           </Button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant={questionMode === "ask" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setQuestionMode("ask")}
+          >
+            /ask
+          </Button>
+          <Button
+            type="button"
+            variant={questionMode === "thread" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setQuestionMode("thread")}
+          >
+            /ask/thread
+          </Button>
+          {questionMode === "thread" && (
+            <input
+              value={threadId}
+              onChange={(e) => setThreadId(e.target.value)}
+              placeholder="Thread id"
+              className="min-w-48 flex-1 rounded-md border px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          )}
         </div>
       </CardHeader>
 
@@ -657,7 +680,7 @@ export function ChatInterface() {
 
             <Button
               type="submit"
-              disabled={!inputValue.trim() && pendingAttachments.length === 0}
+              disabled={(!inputValue.trim() && pendingAttachments.length === 0) || (questionMode === "thread" && !threadId.trim())}
               className="h-11 w-11 p-0 rounded-xl bg-primary text-primary-foreground hover:bg-primary/80 transition"
             >
               <Send className="h-4 w-4" />
