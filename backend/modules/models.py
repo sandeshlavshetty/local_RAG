@@ -97,25 +97,6 @@ def load_faiss_index(create_if_missing: bool = True):
     print(f"[DEBUG MODELS] New FAISS index created with dimension: {dim}")
     return index
 
-
-def save_faiss_index(index) -> None:
-    print("[DEBUG MODELS] save_faiss_index called")
-    print(f"[DEBUG MODELS] Saving index to: {INDEX_FILE}")
-    print(f"[DEBUG MODELS] Index total vectors: {index.ntotal}")
-    try:
-        import faiss  # type: ignore
-    except Exception as e:
-        print(f"[ERROR MODELS] Failed to import faiss: {str(e)}")
-        raise RuntimeError("faiss is not installed. Please install faiss to use the vector index.") from e
-    
-    try:
-        faiss.write_index(index, INDEX_FILE)
-        print("[DEBUG MODELS] FAISS index saved successfully")
-    except Exception as e:
-        print(f"[ERROR MODELS] Failed to save FAISS index: {str(e)}")
-        raise
-
-
 def load_metadata_store() -> Dict:
     print("[DEBUG MODELS] load_metadata_store called")
     print(f"[DEBUG MODELS] METADATA_FILE path: {METADATA_FILE}")
@@ -209,7 +190,6 @@ __all__ = [
     "get_embedding_model",
     "get_embedding_dimension",
     "load_faiss_index",
-    "save_faiss_index",
     "load_metadata_store",
     "save_metadata_store",
     "load_bm25_data",
