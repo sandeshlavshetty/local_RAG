@@ -250,18 +250,32 @@ async def ask_thread(
     This endpoint keeps short-term conversation memory via thread_id and
     performs retrieval on every turn using the existing local retriever.
     """
+    print("\n=== /ask/thread ENDPOINT CALLED ===")
+    print(f"[DEBUG THREAD] Query length: {len(query)}")
+    print(f"[DEBUG THREAD] Query preview: {query[:200]}..." if len(query) > 200 else f"[DEBUG THREAD] Query: {query}")
+    print(f"[DEBUG THREAD] Thread ID: {thread_id}")
+    print(f"[DEBUG THREAD] Retrieval method: {retrieval_method}")
     try:
         from modules.langgraph_retriever_agent import LangGraphRetrieverAgent
         from modules.retriever import retrieve_chunks
 
         global _thread_agent
         if _thread_agent is None:
+            print("[DEBUG THREAD] Creating LangGraphRetrieverAgent singleton instance")
             _thread_agent = LangGraphRetrieverAgent(retrieve_chunks)
+        else:
+            print("[DEBUG THREAD] Reusing existing LangGraphRetrieverAgent singleton instance")
 
         agent = _thread_agent
+        print("[DEBUG THREAD] Invoking threaded agent...")
         result = agent.invoke_thread(query, thread_id=thread_id, retrieval_method=retrieval_method)
+        print("[DEBUG THREAD] Agent invocation completed")
+        print(f"[DEBUG THREAD] Answer length: {len(result.get('answer', ''))}")
+        print(f"[DEBUG THREAD] Citations count: {len(result.get('citations', []))}")
+        print(f"[DEBUG THREAD] Query used: {result.get('query_used', '')}")
         return result
     except Exception as e:
+        print(f"[ERROR THREAD] /ask/thread failed: {str(e)}")
         import traceback
 
         traceback.print_exc()

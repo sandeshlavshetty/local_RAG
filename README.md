@@ -275,3 +275,13 @@ This project demonstrates how **powerful AI systems can be built without comprom
 
 ---
 
+
+common setup requiment
+1. 
+pip install faster-whisper
+2. hf auth login 
+3. 
+curl -fsSL https://ollama.com/install.sh | sh
+4. 
+pip install --upgrade --force-reinstall numpy pandas scikit-learn
+

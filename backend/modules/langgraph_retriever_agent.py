@@ -67,11 +67,14 @@ class LangGraphRetrieverAgent:
 	def __init__(self, retriever_fn: RetrieverFn):
 		self._retriever_fn = retriever_fn
 		self._model = os.getenv("OLLAMA_VL_MODEL", "qwen3:8b")
+		print(f"[DEBUG AGENT] Initializing LangGraphRetrieverAgent with model={self._model}")
 		self._checkpointer = self._build_checkpointer()
 		self._graph = self._build_graph()
+		print("[DEBUG AGENT] LangGraphRetrieverAgent initialization complete")
 
 	def _build_checkpointer(self):
 		mode = os.getenv("LANGGRAPH_CHECKPOINTER", "memory").strip().lower()
+		print(f"[DEBUG AGENT] Requested checkpointer mode: {mode}")
 		if mode == "postgres":
 			db_uri = os.getenv("LANGGRAPH_POSTGRES_URI", "").strip()
 			if db_uri:
@@ -81,6 +84,7 @@ class LangGraphRetrieverAgent:
 					checkpointer = PostgresSaver.from_conn_string(db_uri)
 					if hasattr(checkpointer, "setup"):
 						checkpointer.setup()
+					print("[DEBUG AGENT] Using Postgres checkpointer")
 					return checkpointer
 				except Exception as exc:
 					print(f"[WARNING RETRIEVER] Postgres checkpointer unavailable: {exc}")
@@ -94,13 +98,16 @@ class LangGraphRetrieverAgent:
 					checkpointer = RedisSaver.from_conn_string(db_uri)
 					if hasattr(checkpointer, "setup"):
 						checkpointer.setup()
+					print("[DEBUG AGENT] Using Redis checkpointer")
 					return checkpointer
 				except Exception as exc:
 					print(f"[WARNING RETRIEVER] Redis checkpointer unavailable: {exc}")
 
+		print("[DEBUG AGENT] Falling back to InMemorySaver checkpointer")
 		return InMemorySaver()
 
 	def _build_graph(self):
+		print("[DEBUG AGENT] Building LangGraph state machine")
 		graph = StateGraph(RAGAgentState)
 
 		graph.add_node("decide_retrieve_or_respond", self._decide_retrieve_or_respond)
@@ -131,11 +138,13 @@ class LangGraphRetrieverAgent:
 		graph.add_edge("rewrite_question", "decide_retrieve_or_respond")
 		graph.add_edge("generate_answer", "update_thread_memory")
 		graph.add_edge("update_thread_memory", END)
+		print("[DEBUG AGENT] Compiling LangGraph with configured checkpointer")
 		return graph.compile(checkpointer=self._checkpointer)
 
 	def _decide_retrieve_or_respond(self, state: RAGAgentState) -> RAGAgentState:
 		query = state["query"]
 		thread_notes = state.get("thread_notes", "")
+		print(f"[DEBUG AGENT] decide_retrieve_or_respond: query_len={len(query)}, thread_notes_len={len(thread_notes)}")
 		system_prompt = (
 			"You are a retrieval planner for a local RAG system. "
 			"Decide whether retrieval is needed before answering. "
@@ -158,6 +167,7 @@ class LangGraphRetrieverAgent:
 		action = str(parsed.get("action", "retrieve")).strip().lower()
 		retrieval_hint = str(parsed.get("retrieval_hint", "")).strip() or query
 		direct_answer = str(parsed.get("direct_answer", "")).strip()
+		print(f"[DEBUG AGENT] Planner action={action}, retrieval_hint_len={len(retrieval_hint)}, has_direct_answer={bool(direct_answer)}")
 
 		if action == "direct" and direct_answer:
 			return {
@@ -182,8 +192,10 @@ class LangGraphRetrieverAgent:
 		retrieval_hint = state.get("retrieval_hint") or state["query"]
 		top_k = int(state.get("top_k", 3))
 		method = state.get("retrieval_method", "hybrid")
+		print(f"[DEBUG AGENT] retrieve: method={method}, top_k={top_k}, hint='{retrieval_hint[:120]}'")
 
 		chunks = self._retriever_fn(retrieval_hint, top_k=top_k, method=method)
+		print(f"[DEBUG AGENT] retrieve: fetched_chunks={len(chunks)}")
 
 		context_blocks: List[str] = []
 		citations: List[Dict[str, Any]] = []
@@ -208,8 +220,10 @@ class LangGraphRetrieverAgent:
 	def _grade_documents(self, state: RAGAgentState) -> RAGAgentState:
 		question = state["query"]
 		context = state.get("context_text", "")
+		print(f"[DEBUG AGENT] grade_documents: question_len={len(question)}, context_len={len(context)}")
 
 		if not context.strip():
+			print("[DEBUG AGENT] grade_documents: no context available, marking irrelevant")
 			return {"is_relevant": False}
 
 		system_prompt = (
@@ -227,18 +241,22 @@ class LangGraphRetrieverAgent:
 		raw = _chat(self._model, system_prompt, user_prompt)
 		parsed = _safe_json_parse(raw)
 		score = str(parsed.get("binary_score", "no")).strip().lower()
+		print(f"[DEBUG AGENT] grade_documents: binary_score={score}")
 
 		return {"is_relevant": score == "yes"}
 
 	def _route_after_grading(self, state: RAGAgentState) -> Literal["answer", "rewrite"]:
 		if state.get("is_relevant"):
+			print("[DEBUG AGENT] route_after_grading: relevant context, generating answer")
 			return "answer"
 
 		rewrite_count = int(state.get("rewrite_count", 0))
 		max_rewrites = int(state.get("max_rewrites", 1))
 		if rewrite_count < max_rewrites:
+			print(f"[DEBUG AGENT] route_after_grading: rewriting query ({rewrite_count + 1}/{max_rewrites})")
 			return "rewrite"
 
+		print("[DEBUG AGENT] route_after_grading: rewrite limit reached, generating answer")
 		return "answer"
 
 	def _rewrite_question(self, state: RAGAgentState) -> RAGAgentState:
@@ -258,6 +276,7 @@ class LangGraphRetrieverAgent:
 		rewritten = _chat(self._model, system_prompt, user_prompt).strip()
 		if not rewritten:
 			rewritten = current
+		print(f"[DEBUG AGENT] rewrite_question: old_len={len(current)}, new_len={len(rewritten)}")
 
 		return {
 			"query": rewritten,
@@ -270,8 +289,10 @@ class LangGraphRetrieverAgent:
 		question = state.get("original_query", state["query"])
 		context = state.get("context_text", "")
 		thread_notes = state.get("thread_notes", "")
+		print(f"[DEBUG AGENT] generate_answer: question_len={len(question)}, context_len={len(context)}, thread_notes_len={len(thread_notes)}")
 
 		if not context.strip():
+			print("[DEBUG AGENT] generate_answer: no context, returning fallback response")
 			return {
 				"answer": (
 					"I could not find relevant context in your indexed data for this question. "
@@ -291,6 +312,7 @@ class LangGraphRetrieverAgent:
 		)
 
 		answer = _chat(self._model, system_prompt, user_prompt).strip()
+		print(f"[DEBUG AGENT] generate_answer: answer_len={len(answer)}")
 		return {"answer": answer}
 
 	def _update_thread_memory(self, state: RAGAgentState) -> RAGAgentState:
@@ -303,6 +325,7 @@ class LangGraphRetrieverAgent:
 			thread_notes = f"{previous_notes}\n\n{turn_summary}"
 		else:
 			thread_notes = turn_summary
+		print(f"[DEBUG AGENT] update_thread_memory: turn_summary_len={len(turn_summary)}, total_notes_len={len(thread_notes)}")
 
 		return {
 			"thread_notes": thread_notes,
@@ -310,6 +333,7 @@ class LangGraphRetrieverAgent:
 		}
 
 	def invoke(self, query: str, top_k: int = 3, retrieval_method: str = "hybrid") -> Dict[str, Any]:
+		print(f"[DEBUG AGENT] invoke called: query_len={len(query)}, top_k={top_k}, method={retrieval_method}")
 		initial_state: RAGAgentState = {
 			"original_query": query,
 			"query": query,
@@ -321,6 +345,7 @@ class LangGraphRetrieverAgent:
 			"context_text": "",
 		}
 		final_state = self._graph.invoke(initial_state)
+		print(f"[DEBUG AGENT] invoke completed: answer_len={len(final_state.get('answer', ''))}, citations={len(final_state.get('citations', []))}")
 		return {
 			"answer": final_state.get("answer", "No answer generated."),
 			"citations": final_state.get("citations", []),
@@ -334,6 +359,7 @@ class LangGraphRetrieverAgent:
 		top_k: int = 3,
 		retrieval_method: str = "hybrid",
 	) -> Dict[str, Any]:
+		print(f"[DEBUG AGENT] invoke_thread called: thread_id={thread_id}, query_len={len(query)}, top_k={top_k}, method={retrieval_method}")
 		initial_state: RAGAgentState = {
 			"original_query": query,
 			"query": query,
@@ -347,7 +373,9 @@ class LangGraphRetrieverAgent:
 			"thread_notes": "",
 		}
 		config = {"configurable": {"thread_id": str(thread_id)}}
+		print(f"[DEBUG AGENT] invoke_thread using graph config: {config}")
 		final_state = self._graph.invoke(initial_state, config)
+		print(f"[DEBUG AGENT] invoke_thread completed: answer_len={len(final_state.get('answer', ''))}, citations={len(final_state.get('citations', []))}, thread_notes_len={len(final_state.get('thread_notes', ''))}")
 		return {
 			"answer": final_state.get("answer", "No answer generated."),
 			"citations": final_state.get("citations", []),
