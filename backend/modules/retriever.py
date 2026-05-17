@@ -23,6 +23,7 @@ metadata_store = load_metadata_store()
 _bm25_index = None
 _corpus = []
 _doc_ids = []
+_langgraph_agent = None
 
 def _initialize_bm25():
     """Initialize BM25 index from disk or metadata store."""
@@ -347,13 +348,8 @@ def retrieve_hybrid(query, top_k=5):
     
     return final_results
 
-def retrieve_answer(query, top_k=3, retrieval_method="hybrid"):
-    """
-    LLM-driven RAG: Ask Ollama what information it needs,
-    then retrieve relevant chunks using specified method, and answer with citations.
-    
-    retrieval_method options: 'semantic', 'bm25', 'keyword', 'tfidf', 'hybrid'
-    """
+def _legacy_retrieve_answer(query, top_k=3, retrieval_method="hybrid"):
+    """Legacy non-graph retrieval pipeline kept as a fallback path."""
     # If no documents are indexed, short-circuit with a helpful message
     try:
         index_count = getattr(index, 'ntotal', 0)
@@ -436,11 +432,7 @@ def retrieve_answer(query, top_k=3, retrieval_method="hybrid"):
         )
         answer_content = response["message"]["content"]
 
-        return {
-            "answer": answer_content,
-            "citations": citations,
-            "query_used": retrieval_hint
-        }
+        return {"answer": answer_content, "citations": citations, "query_used": retrieval_hint}
     except Exception as e:
         print(f"[ERROR RETRIEVER] Failed to generate answer: {str(e)}")
         return {
@@ -448,6 +440,46 @@ def retrieve_answer(query, top_k=3, retrieval_method="hybrid"):
             "citations": citations,
             "query_used": retrieval_hint
         }
+
+
+def retrieve_answer(query, top_k=3, retrieval_method="hybrid"):
+    """
+    LangGraph-based retrieval agent.
+
+    This keeps the existing local FAISS/BM25/keyword/TF-IDF retrievers and Ollama model,
+    while adding a graph workflow (decision -> retrieve -> grade -> rewrite -> answer).
+    """
+    global _langgraph_agent
+
+    # If no documents are indexed, short-circuit with a helpful message.
+    try:
+        index_count = getattr(index, "ntotal", 0)
+        if index_count == 0 or not metadata_store:
+            return {
+                "answer": (
+                    "No documents are indexed yet. Please upload a PDF/Image/Audio via /upload "
+                    "before asking questions."
+                ),
+                "citations": [],
+                "query_used": "",
+            }
+    except Exception as e:
+        print(f"[ERROR RETRIEVER] Exception checking index: {str(e)}")
+        return {
+            "answer": "Vector index unavailable. Please upload a PDF/Image/Audio via /upload to initialize the index.",
+            "citations": [],
+            "query_used": "",
+        }
+
+    try:
+        if _langgraph_agent is None:
+            from modules.langgraph_retriever_agent import LangGraphRetrieverAgent
+
+            _langgraph_agent = LangGraphRetrieverAgent(retrieve_chunks)
+        return _langgraph_agent.invoke(query, top_k=top_k, retrieval_method=retrieval_method)
+    except Exception as e:
+        print(f"[WARNING RETRIEVER] LangGraph agent failed, using legacy pipeline: {str(e)}")
+        return _legacy_retrieve_answer(query, top_k=top_k, retrieval_method=retrieval_method)
 
 # Example usage
 if __name__ == "__main__":

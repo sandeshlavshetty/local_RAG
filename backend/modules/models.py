@@ -9,7 +9,7 @@ Exposes:
 - OLLAMA_VL_MODEL, INDEX_FILE, METADATA_FILE
 """
 from __future__ import annotations
-
+from langchain_ollama import ChatOllama
 import os
 import json
 from typing import Any, Dict
