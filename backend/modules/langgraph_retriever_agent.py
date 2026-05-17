@@ -354,6 +354,34 @@ class LangGraphRetrieverAgent:
 			"query_used": final_state.get("query_used", final_state.get("retrieval_hint", "")),
 		}
 
+	def _debug_thread_memory_snapshot(self, config: Dict[str, Any], stage: str) -> None:
+		"""Best-effort snapshot of persisted thread memory for debugging."""
+		try:
+			snapshot = self._graph.get_state(config)
+		except Exception as exc:
+			print(f"[DEBUG AGENT] {stage}: unable to read checkpoint state: {exc}")
+			return
+
+		values = {}
+		if isinstance(snapshot, dict):
+			values = snapshot.get("values", {}) if isinstance(snapshot.get("values", {}), dict) else {}
+		else:
+			maybe_values = getattr(snapshot, "values", {})
+			if isinstance(maybe_values, dict):
+				values = maybe_values
+
+		thread_notes = values.get("thread_notes", "") if isinstance(values, dict) else ""
+		query = values.get("query", "") if isinstance(values, dict) else ""
+		answer = values.get("answer", "") if isinstance(values, dict) else ""
+
+		print(
+			f"[DEBUG AGENT] {stage}: checkpoint snapshot "
+			f"thread_notes_len={len(thread_notes)}, query_len={len(query)}, answer_len={len(answer)}"
+		)
+		if thread_notes:
+			preview = thread_notes[:300].replace("\n", "\\n")
+			print(f"[DEBUG AGENT] {stage}: thread_notes_preview={preview}")
+
 	def invoke_thread(
 		self,
 		query: str,
@@ -375,7 +403,9 @@ class LangGraphRetrieverAgent:
 		}
 		config = {"configurable": {"thread_id": str(thread_id)}}
 		print(f"[DEBUG AGENT] invoke_thread using graph config: {config}")
+		self._debug_thread_memory_snapshot(config, "before_invoke_thread")
 		final_state = self._graph.invoke(initial_state, config)
+		self._debug_thread_memory_snapshot(config, "after_invoke_thread")
 		print(f"[DEBUG AGENT] invoke_thread completed: answer_len={len(final_state.get('answer', ''))}, citations={len(final_state.get('citations', []))}, thread_notes_len={len(final_state.get('thread_notes', ''))}")
 		return {
 			"answer": final_state.get("answer", "No answer generated."),
