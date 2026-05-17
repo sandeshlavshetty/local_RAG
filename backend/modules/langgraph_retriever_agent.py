@@ -123,7 +123,7 @@ class LangGraphRetrieverAgent:
 			self._route_after_decision,
 			{
 				"retrieve": "retrieve",
-				"end": END,
+				"end": "update_thread_memory",
 			},
 		)
 		graph.add_edge("retrieve", "grade_documents")
@@ -185,7 +185,9 @@ class LangGraphRetrieverAgent:
 
 	def _route_after_decision(self, state: RAGAgentState) -> Literal["retrieve", "end"]:
 		if state.get("should_retrieve"):
+			print("[DEBUG AGENT] route_after_decision: retrieving context")
 			return "retrieve"
+		print("[DEBUG AGENT] route_after_decision: direct response, updating thread memory")
 		return "end"
 
 	def _retrieve(self, state: RAGAgentState) -> RAGAgentState:
@@ -370,7 +372,6 @@ class LangGraphRetrieverAgent:
 			"max_rewrites": 1,
 			"citations": [],
 			"context_text": "",
-			"thread_notes": "",
 		}
 		config = {"configurable": {"thread_id": str(thread_id)}}
 		print(f"[DEBUG AGENT] invoke_thread using graph config: {config}")
