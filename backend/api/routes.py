@@ -65,7 +65,7 @@ async def upload_file(file: UploadFile = File(...)):
     with open(save_path, "wb") as f:
         f.write(await file.read())
 
-    if file_ext == ".txt":
+    if file_ext in [".pdf", ".txt"]:
         results = process_pdf(save_path)
         for r in results:
             chunks = chunk_text_with_overlap(r["text"])
@@ -161,7 +161,7 @@ async def ask_question(
             print(f"[DEBUG] Checking: file_ext in ['.png', '.jpg', '.jpeg'] ? {file_ext in ['.png', '.jpg', '.jpeg']}")
             print(f"[DEBUG] Checking: file_ext in ['.mp3', '.wav', ...] ? {file_ext in ['.mp3', '.wav', '.m4a', '.webm', '.ogg', '.flac']}")
             
-            if file_ext == ".pdf":
+            if file_ext in [".pdf", ".txt"]:
                 print("[DEBUG] ✓ ENTERED PDF CONDITION")
                 results = process_pdf(save_path)  # list of {"page": int, "text": str}
                 print(f"[DEBUG] PDF processed, got {len(results)} results")

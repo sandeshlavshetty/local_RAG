@@ -275,7 +275,7 @@ This project demonstrates how **powerful AI systems can be built without comprom
 
 ---
 
-
++6
 common setup requiment
 1. 
 pip install faster-whisper
